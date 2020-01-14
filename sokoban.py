@@ -3,9 +3,9 @@
 import sys
 import pygame
 import string
-import Queue
+import queue
 
-class game:
+class Game:
 
     def is_valid_value(self,char):
         if ( char == ' ' or #floor
@@ -20,11 +20,11 @@ class game:
             return False
 
     def __init__(self,filename,level):
-        self.queue = Queue.LifoQueue()
+        self.queue = queue.LifoQueue()
         self.matrix = []
 #        if level < 1 or level > 50:
         if level < 1:
-            print "ERROR: Level "+str(level)+" is out of range"
+            print("ERROR: Level "+str(level)+" is out of range")
             sys.exit(1)
         else:
             file = open(filename,'r')
@@ -43,7 +43,7 @@ class game:
                             elif c == '\n': #jump to next row when newline
                                 continue
                             else:
-                                print "ERROR: Level "+str(level)+" has invalid value "+c
+                                print("ERROR: Level "+str(level)+" has invalid value "+c)
                                 sys.exit(1)
                         self.matrix.append(row)
                     else:
@@ -74,7 +74,7 @@ class game:
         if self.is_valid_value(content):
             self.matrix[y][x] = content
         else:
-            print "ERROR: Value '"+content+"' to be added is not valid"
+            print("ERROR: Value '"+content+"' to be added is not valid")
 
     def worker(self):
         x = 0
@@ -184,7 +184,7 @@ class game:
             elif current[2] == '+' and future == '$' and future_box == '.':
                 self.move_box(current[0]+x,current[1]+y,x,y)
                 self.set_content(current[0],current[1],'.')
-                self.set_content(current[0]+x,current[1]+y,'+')
+                self.set_content(current[0]+x,current[1]+y,'@')
                 if save: self.queue.put((x,y,True))
             elif current[2] == '+' and future == '*' and future_box == ' ':
                 self.move_box(current[0]+x,current[1]+y,x,y)
@@ -266,7 +266,7 @@ def ask(screen, question):
   "ask(screen, question) -> answer"
   pygame.font.init()
   current_string = []
-  display_box(screen, question + ": " + string.join(current_string,""))
+  display_box(screen, question + ": " + "".join(current_string))
   while 1:
     inkey = get_key()
     if inkey == pygame.K_BACKSPACE:
@@ -277,8 +277,8 @@ def ask(screen, question):
       current_string.append("_")
     elif inkey <= 127:
       current_string.append(chr(inkey))
-    display_box(screen, question + ": " + string.join(current_string,""))
-  return string.join(current_string,"")
+    display_box(screen, question + ": " + "".join(current_string))
+  return int("".join(current_string))
 
 def start_game():
     start = pygame.display.set_mode((320,240))
@@ -286,7 +286,7 @@ def start_game():
     if level > 0:
         return level
     else:
-        print "ERROR: Invalid Level: "+str(level)
+        print("ERROR: Invalid Level: "+str(level))
         sys.exit(2)
 
 wall = pygame.image.load('images/wall.png')
@@ -300,7 +300,7 @@ background = 255, 226, 191
 pygame.init()
 
 level = start_game()
-game = game('levels',level)
+game = Game('levels',level)
 size = game.load_size()
 screen = pygame.display.set_mode(size)
 while 1:
