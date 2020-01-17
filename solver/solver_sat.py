@@ -121,8 +121,6 @@ class SokobanSolverSAT(SokobanSolverBasic):
                     all_f.append(Implies(action, pre))
                     all_f.append(Implies(action, add))
                     all_f.append(Implies(action, dele))
-
-
         return And(all_f)
 
     def encode_state_schema(self):
@@ -160,8 +158,8 @@ class SokobanSolverSAT(SokobanSolverBasic):
         controls = None
         if self.solver.solve():
             controls = self.parse_solution()
-            print(f"Use {len(controls)} steps")
-            print(controls)
+            # print(f"Use {len(controls)} steps")
+            # print(controls)
             # partial_model = [EqualsOrIff(k, self.solver.get_value(k)) for k in self.get_used_keys()]
             # self.solver.add_assertion(Not(And(partial_model)))
         else:

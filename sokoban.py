@@ -21,18 +21,16 @@ if __name__ == "__main__":
     # game = SokobanGame(54, SokobanSolverSearch, 52) #0.043s
     # game = SokobanGame(54, SokobanSolverSearchAdvanced, 52) #0.0433s
 
-
     # game = SokobanGame(1, SokobanSolverSearch, 112) # 7.7
     # game = SokobanGame(1, SokobanSolverSearchAdvanced, 112) # 13
 
-    # game = SokobanGame(5)
+    # game = SokobanGame(6)
     # game.play()
     # exit(0)
 
-    do_not_play = [4, 5]
-    do_not_play = []
+    do_not_play = [5]
 
-    for level in range(1,55):
+    for level in range(1,5):
         if level not in do_not_play:
             game = SokobanGame(level, SokobanSolverSearch, 500) # 7.7
             game.auto_play(70)
