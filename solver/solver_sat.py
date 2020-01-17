@@ -1,5 +1,5 @@
 from pysmt.shortcuts import *
-from game.logic import FLOOR, WALL, WORKER_ON_FLOOR, DOCK, BOX_ON_DOCK, BOX, WORKER_ON_DOCK
+from solver.solver_basic import SokobanSolverBasic
 
 class SymbolArray:
     def __init__(self, name, shape):
@@ -27,48 +27,17 @@ class SymbolArray:
         return self.reverse_mapping[symb]
 
 
-class SokobanSolverSAT:
-    def __init__(self, map, time_limit=500):
+class SokobanSolverSAT(SokobanSolverBasic):
+    def __init__(self, map, step_limit):
+        super().__init__(map)
         self.nx = max(len(row) for row in map)
         self.ny = len(map)
-        self.walls = set()
-        self.playabel = set()
-        self.docks = set()
-
-        self.init_boxes_loc = set()
-        self.init_worker_loc = None
-        self.max_time_step = time_limit
-        self.goal_time_step = [self.max_time_step]
-        for i, row in enumerate(map):
-            for j, cell in enumerate(row):
-                if cell == WALL:
-                    self.walls.add((i,j))
-                else:
-                    self.playabel.add((i,j))
-                    if cell == WORKER_ON_FLOOR or cell == WORKER_ON_DOCK:
-                        assert self.init_worker_loc is None
-                        self.init_worker_loc = (i,j)
-                    elif cell == DOCK:
-                        self.docks.add((i,j))
-                    elif cell == BOX_ON_DOCK:
-                        self.init_boxes_loc.add((i,j))
-                        self.docks.add((i,j))
-                    elif cell == BOX:
-                        self.init_boxes_loc.add((i,j))
-                    else:
-                        assert cell == FLOOR
-
-        self.move = SymbolArray("m", shape=(self.nx, self.ny, self.nx, self.ny, self.max_time_step))
-        self.push = SymbolArray("p", shape=(self.nx, self.ny, self.nx, self.ny, self.max_time_step))
-        self.worker_at = SymbolArray("w", shape=(self.nx, self.ny, self.max_time_step+1))
-        self.box_at = SymbolArray("b", shape=(self.nx, self.ny, self.max_time_step+1))
-        # print(self.walls)
-        # print(self.playabel)
-        # print(self.docks)
-        # print(self.init_boxes_loc)
-        # print(self.init_worker_loc)
-        assert len(self.init_boxes_loc) == len(self.docks)
-        self.solver = None
+        self.step_limit = step_limit
+        self.move = SymbolArray("m", shape=(self.nx, self.ny, self.nx, self.ny, self.step_limit))
+        self.push = SymbolArray("p", shape=(self.nx, self.ny, self.nx, self.ny, self.step_limit))
+        self.worker_at = SymbolArray("w", shape=(self.nx, self.ny, self.step_limit+1))
+        self.box_at = SymbolArray("b", shape=(self.nx, self.ny, self.step_limit+1))
+        self.goal_time_step = [self.step_limit]
         self.init_solver()
 
     def init_solver(self):
@@ -134,16 +103,11 @@ class SokobanSolverSAT:
             raise NotImplementedError("Action not defined")
         return pre, add, dele
 
-    def get_reachabel_loc(self, x, y):
-        reachabel = [(x-1,y), (x,y-1), (x,y+1), (x+1,y)]
-        reachabel = set(filter(lambda t: (t[0], t[1]) not in self.walls, reachabel))
-        return reachabel
-
     def encode_action_schema(self):
         all_f = []
-        for time_step_action in range(self.max_time_step):
+        for time_step_action in range(self.step_limit):
             for i,j in self.playabel:
-                reachable = self.get_reachabel_loc(i, j)
+                reachable = self.get_one_step_move(i, j)
                 for tar_i, tar_j in reachable:
                     offset_x, offset_y = tar_i - i, tar_j - j
                     action = self.move[i, j, tar_i, tar_j, time_step_action]
@@ -163,9 +127,9 @@ class SokobanSolverSAT:
 
     def encode_state_schema(self):
         all_f = []
-        for time_step_action in range(self.max_time_step):
+        for time_step_action in range(self.step_limit):
             for i,j in self.playabel:
-                reachable = self.get_reachabel_loc(i, j)
+                reachable = self.get_one_step_move(i, j)
                 possible_out_move = []
                 possible_in_move = []
                 for tar_i, tar_j in reachable:
@@ -193,30 +157,30 @@ class SokobanSolverSAT:
         return And(all_f)
 
     def solve_for_one(self):
-        while self.solver.solve():
-            partial_model = [EqualsOrIff(k, self.solver.get_value(k)) for k in self.get_used_keys()]
-            control = self.parse_solution()
-            self.solver.add_assertion(Not(And(partial_model)))
-            return control
-        return None
+        controls = None
+        if self.solver.solve():
+            controls = self.parse_solution()
+            print(f"Use {len(controls)} steps")
+            print(controls)
+            # partial_model = [EqualsOrIff(k, self.solver.get_value(k)) for k in self.get_used_keys()]
+            # self.solver.add_assertion(Not(And(partial_model)))
+        else:
+            print(f"No solution found in {self.step_limit} steps")
+        return controls
 
     def parse_solution(self):
-        ### get a sequence of worker moves ###
-        moves = [self.move.get_values(k) for k in self.move.get_used_keys() if self.solver.get_value(k).is_true()]
-        pushes = [self.push.get_values(k) for k in self.push.get_used_keys() if self.solver.get_value(k).is_true()]
-        boxes = [self.box_at.get_values(k) for k in self.box_at.get_used_keys() if self.solver.get_value(k).is_true()]
+        ### get a sequence of worker positions ###
         worker = [self.worker_at.get_values(k) for k in self.worker_at.get_used_keys() if self.solver.get_value(k).is_true()]
-        actions = moves + pushes
-        actions = sorted(actions, key=lambda t: t[1][4])
-
-        control_mapping = {(1, 0): "DOWN", (-1, 0): "UP", (0, 1): "RIGHT", (0,-1): "LEFT"}
+        worker = sorted(worker, key=lambda t: t[1][2])
         controls = []
-        for a in actions:
-            _, (x, y, tar_x, tar_y, t) = a
-            offset_x, offset_y = tar_x - x, tar_y - y
-            controls.append(control_mapping[(offset_x, offset_y)])
-        print(controls)
-        print(len(controls))
+        pre_x, pre_y = self.init_worker_loc
+        for pos in worker:
+            _, (x, y, _) = pos
+            offset_x, offset_y = x - pre_x, y - pre_y
+            if offset_x != 0 or offset_y != 0:
+                controls.append(self.control_mapping[(offset_x, offset_y)])
+                pre_x = x
+                pre_y = y
         return controls
 
 

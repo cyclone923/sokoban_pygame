@@ -1,11 +1,11 @@
 import pygame
 import sys
 from game.logic import SokobanLogic
-
+import time
 
 
 class SokobanGame:
-    def __init__(self, level, solver=None, limit=None):
+    def __init__(self, level, solver=None, step_limit=None):
         self.wall = pygame.image.load('images/wall.png')
         self.floor = pygame.image.load('images/floor.png')
         self.box = pygame.image.load('images/box.png')
@@ -15,13 +15,28 @@ class SokobanGame:
         self.docker = pygame.image.load('images/dock.png')
 
         self.background = 255, 226, 191
-        # pygame.init()
-        pygame.font.init()
+
         # self.level = self.start_game()
         self.level = level
         self.logic = SokobanLogic('levels', self.level)
+        self.solver = None
+        self.solution = None
         if solver is not None:
-            self.solver = solver(self.logic.matrix, time_limit=limit)
+            assert step_limit is not None
+            self.solver = solver(self.logic.matrix, step_limit=step_limit)
+            time0 = time.time()
+            self.solution = self.solver.solve_for_one()
+            time1 = time.time()
+            print(f"\nLevel: {self.level}")
+            print(f"Use {time1 - time0: .2f} seconds")
+            print(f"Use {len(self.solution)} steps")
+
+
+    def solve_game(self):
+        if self.solver is None:
+            raise ReferenceError("solver not provided")
+        else:
+            return self.solver.solve_for_one()
 
     def print_game(self, matrix, screen):
         screen.fill(self.background)
@@ -112,9 +127,41 @@ class SokobanGame:
             print("ERROR: Invalid Level: " + str(level))
             sys.exit(2)
 
-    def play(self, solution=None):
-        if solution is not None:
-            solution = solution[::-1]
+    def auto_play(self, interval):
+        pygame.init()
+        pygame.font.init()
+        self.size = self.logic.load_size()
+        self.screen = pygame.display.set_mode(self.size)
+        if self.solution is not None:
+            self.solution = self.solution[::-1]
+        time_elapsed_since_last_action = 0
+        clock = pygame.time.Clock()
+        while True:
+            self.print_game(self.logic.get_matrix(), self.screen)
+            dt = clock.tick()
+            time_elapsed_since_last_action += dt
+            if time_elapsed_since_last_action > interval:
+                pygame.event.get()
+                if self.logic.is_completed():
+                    self.display_end(self.screen)
+                    pygame.time.wait(500)
+                    pygame.quit()
+                    break
+                elif self.solution != []:
+                    control = self.solution.pop()
+                    if control == "UP":
+                        self.logic.move(0, -1, True)
+                    elif control == "DOWN":
+                        self.logic.move(0, 1, True)
+                    elif control == "LEFT":
+                        self.logic.move(-1, 0, True)
+                    elif control == "RIGHT":
+                        self.logic.move(1, 0, True)
+                time_elapsed_since_last_action = 0
+            pygame.display.update()
+
+
+    def play(self):
         self.size = self.logic.load_size()
         self.screen = pygame.display.set_mode(self.size)
         while 1:
@@ -133,16 +180,8 @@ class SokobanGame:
                         self.logic.move(-1, 0, True)
                     elif event.key == pygame.K_RIGHT:
                         self.logic.move(1, 0, True)
+                    elif event.key == pygame.K_d:
+                        self.logic.unmove()
                     elif event.key == pygame.K_q:
                         sys.exit(0)
-                    elif event.key == pygame.K_SPACE and solution is not None:
-                        control = solution.pop()
-                        if control == "UP":
-                            self.logic.move(0, -1, True)
-                        elif control == "DOWN":
-                            self.logic.move(0, 1, True)
-                        elif control == "LEFT":
-                            self.logic.move(-1, 0, True)
-                        elif control == "RIGHT":
-                            self.logic.move(1, 0, True)
             pygame.display.update()
