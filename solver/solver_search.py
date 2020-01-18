@@ -1,48 +1,39 @@
 from solver.solver_basic import SokobanSolverBasic
-import queue
+from queue import Queue
+from heapdict import heapdict
+import time
 
 class GameState(object):
-    def __init__(self, box_loc, worker_loc):
-        self.box_loc = box_loc
-        self.worker_loc = worker_loc
-
-    def __eq__(self, other):
-        return self.box_loc == other.box_loc and self.worker_loc == other.worker_loc
-
-    def __hash__(self):
-        return hash(self.worker_loc) + hash(frozenset(self.box_loc))
-
-class GameInfo():
-    def __init__(self, boxes, worker, depth, parent):
-        assert type(boxes) == set
-        self.game_state = GameState(boxes, worker)
-        self.depth = depth
+    def __init__(self, boxes, worker, parent):
+        self.boxes = boxes
+        self.worker = worker
         self.parent = parent
 
-    def get_boxes_loc(self):
-        return self.game_state.box_loc
+    def __eq__(self, other):
+        return self.boxes == other.boxes and self.worker == other.worker
 
-    def get_worker_loc(self):
-        return self.game_state.worker_loc
+    def __hash__(self):
+        return hash( (self.worker, frozenset(self.boxes)))
 
     def get_history(self):
         history = []
         current = self
         while current is not None:
-            history.append((current.get_worker_loc(), current.get_boxes_loc()))
+            history.append((current.worker, current.boxes))
             current = current.parent
         history.reverse()
         return history
 
+
 class SokobanSolverSearch(SokobanSolverBasic):
     def __init__(self, map, step_limit):
         super().__init__(map)
-        self.init_game_info = GameInfo(self.init_boxes_loc, self.init_worker_loc, 0, None)
-        self.goal_game_state = GameState(self.docks, None)
+        self.init_game_info = GameState(self.init_boxes_loc, self.init_worker_loc, None)
+        self.goal_game_state = GameState(self.docks, None, None)
         self.step_limit = step_limit
 
     def win(self, s):
-        return s.get_boxes_loc() == self.goal_game_state.box_loc # set equivalence
+        return s.boxes == self.goal_game_state.boxes # set equivalence
 
     def push_box(self, worker, box, all_boxes):# return the new worker postion and new box posistion
         new_worker_and_box = None
@@ -62,9 +53,8 @@ class SokobanSolverSearch(SokobanSolverBasic):
                     ans = True
         return ans
 
-
     def bfs_for_path(self, init_worker, tar_worker, boxes):
-        my_queue = queue.Queue()
+        my_queue = Queue()
         my_queue.put((init_worker, None))
         solution = None
         memory = set()
@@ -119,57 +109,54 @@ class SokobanSolverSearch(SokobanSolverBasic):
             print(f"No solution found in {self.step_limit} steps")
         return control
 
-    def creat_game_info(self, boxes, worker, depth, parent):
-        return GameInfo(boxes, worker, depth, parent)
+    def creat_game_info(self, boxes, worker, parent):
+        return GameState(boxes, worker, parent)
 
     def expand_current_state(self, current):
         # inefficient one-step state expansion, can be improved with inheritance
-        x, y = current.get_worker_loc()
+        x, y = current.worker
         reachable = self.get_one_step_move(x, y)
         successors = []
         for pos in reachable:
-            if pos not in current.get_boxes_loc(): # can move
-                new_boxes = set(current.get_boxes_loc())
-                child = self.creat_game_info(new_boxes, pos, current.depth+1, current)
+            if pos not in current.boxes: # can move
+                new_boxes = set(current.boxes)
+                child = self.creat_game_info(new_boxes, pos, current)
                 successors.append(child)
             else:
-                new_worker_and_box = self.push_box((x,y), pos, current.get_boxes_loc())
+                new_worker_and_box = self.push_box((x,y), pos, current.boxes)
                 if new_worker_and_box is not None:
                     new_worker, new_box = new_worker_and_box
-                    new_boxes = set(current.get_boxes_loc())
+                    new_boxes = set(current.boxes)
                     new_boxes.remove(new_worker)
                     new_boxes.add(new_box)
-                    child = self.creat_game_info(new_boxes, new_worker, current.depth+1, current)
+                    child = self.creat_game_info(new_boxes, new_worker, current)
                     successors.append(child)
         return successors
 
     def search(self):
-        # default bfs with memory, can be improved with inheritance
-        my_queue = queue.Queue()
-        my_queue.put(self.init_game_info)
+        frontier = heapdict()
+        frontier[self.init_game_info] = self.evaluate(self.init_game_info)
         solution = None
-        memory = set()
-        memory.add(self.init_game_info)
-        while not my_queue.empty() and solution is None:
-            current = my_queue.get()
+        expanded = set()
+        while frontier.peekitem() and solution is None:
+            current, _ = frontier.popitem()
+            expanded.add(current)
             successors = self.expand_current_state(current)
             for s in successors:
                 if self.win(s):
                     solution = s.get_history()
                     break
                 else:
-                    current_steps = s.depth
-                    if current_steps < self.step_limit:
-                        if s.game_state not in memory and self.evaluate(s.game_state) == 1:
-                            my_queue.put(s)
-                            memory.add(s.game_state)
-                        else:
-                            memory.add(s.game_state)
+                    if s not in expanded and s not in frontier:
+                        score = self.evaluate(s)
+                        if score > 0:
+                            frontier[s] = score
         return solution
 
     def evaluate(self, game_state):
-        score = 1
-        for box in game_state.box_loc:
+        # score = 1
+        score = time.time()
+        for box in game_state.boxes:
             if self.at_dead_corner(box):
                 score = 0
                 break

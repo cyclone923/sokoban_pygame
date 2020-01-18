@@ -28,9 +28,6 @@ if __name__ == "__main__":
     # game.play()
     # exit(0)
 
-    do_not_play = [5]
-
     for level in range(1,5):
-        if level not in do_not_play:
-            game = SokobanGame(level, SokobanSolverSearch, 500) # 7.7
-            game.auto_play(70)
+        game = SokobanGame(level, SokobanSolverSearch, 500) # 7.7
+        game.auto_play(70)
