@@ -149,16 +149,23 @@ class SokobanSolverSearch(SokobanSolverBasic):
                 else:
                     if s not in expanded and s not in frontier:
                         score = self.evaluate(s)
-                        if score > 0:
+                        if score != float('inf'):
                             frontier[s] = score
         return solution
 
+    def get_depth(self, state):
+        d = 0
+        while state is not None:
+            state = state.parent
+            d += 1
+        return d
+
     def evaluate(self, game_state):
         # score = 1
-        score = time.time()
+        score = self.get_depth(game_state)
         for box in game_state.boxes:
             if self.at_dead_corner(box):
-                score = 0
+                score += float('inf')
                 break
         return score
 

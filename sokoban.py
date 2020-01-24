@@ -24,10 +24,9 @@ if __name__ == "__main__":
     # game = SokobanGame(1, SokobanSolverSearch, 112) # 7.7
     # game = SokobanGame(1, SokobanSolverSearchAdvanced, 112) # 13
 
-    # game = SokobanGame(6)
-    # game.play()
-    # exit(0)
+    # game.auto_play(70)
+
 
     for level in range(1,5):
-        game = SokobanGame(level, SokobanSolverSearch, 500) # 7.7
+        game = SokobanGame(level, SokobanSolverSearch, 200) # 7.7
         game.auto_play(70)

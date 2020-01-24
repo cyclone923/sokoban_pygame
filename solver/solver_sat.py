@@ -152,6 +152,10 @@ class SokobanSolverSAT(SokobanSolverBasic):
                                          ExactlyOne(possible_in_push)))
                 all_f.append(Implies(And(self.box_at[i, j, time_step_action], Not(self.box_at[i, j, time_step_action+1])),
                                          ExactlyOne(possible_out_push)))
+
+                rest_playabel = self.playabel.copy()
+                rest_playabel.remove((i,j))
+                all_f.append(Implies(self.worker_at[i, j, time_step_action], And([Not(self.worker_at[x, y, time_step_action]) for (x, y) in rest_playabel])))
         return And(all_f)
 
     def solve_for_one(self):
