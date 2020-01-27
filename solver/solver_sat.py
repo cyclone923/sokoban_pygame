@@ -2,9 +2,9 @@ from pysmt.shortcuts import *
 from solver.solver_basic import SokobanSolverBasic
 
 class SymbolArray:
-    def __init__(self, name, shape):
+    def __init__(self, name, dim):
         self.name = name
-        self.dim = 1 if type(shape) == int else len(shape)
+        self.dim = dim
         self.arr = {}
         self.reverse_mapping = {}
 
@@ -20,7 +20,7 @@ class SymbolArray:
     def get_symbol_name(self, idx):
         return self.name + "(" + ",".join(map(lambda x: str(x), idx)) + ")"
 
-    def get_used_keys(self):
+    def get_all_keys(self):
         return set(self.reverse_mapping.keys())
 
     def get_values(self, symb):
@@ -33,22 +33,19 @@ class SokobanSolverSAT(SokobanSolverBasic):
         self.nx = max(len(row) for row in map)
         self.ny = len(map)
         self.step_limit = step_limit
-        self.move = SymbolArray("m", shape=(self.nx, self.ny, self.nx, self.ny, self.step_limit))
-        self.push = SymbolArray("p", shape=(self.nx, self.ny, self.nx, self.ny, self.step_limit))
-        self.worker_at = SymbolArray("w", shape=(self.nx, self.ny, self.step_limit+1))
-        self.box_at = SymbolArray("b", shape=(self.nx, self.ny, self.step_limit+1))
+        self.move = SymbolArray("m", dim=5)
+        self.push = SymbolArray("p", dim=5)
+        self.worker_at = SymbolArray("w", dim=3)
+        self.box_at = SymbolArray("b", dim=3)
         self.goal_time_step = [self.step_limit]
-        self.init_solver()
 
-    def init_solver(self):
         self.formula = self.encode_constraints()
-        self.solver = Solver()
-        self.solver.add_assertion(self.formula)
+        self.solver = None
 
     def get_used_keys(self):
         keys = set()
         for arr_keys in [self.move, self.push, self.worker_at, self.box_at]:
-            keys = keys.union(arr_keys.get_used_keys())
+            keys = keys.union(arr_keys.get_all_keys())
         return keys
 
     def encode_constraints(self):
@@ -158,8 +155,14 @@ class SokobanSolverSAT(SokobanSolverBasic):
                 all_f.append(Implies(self.worker_at[i, j, time_step_action], And([Not(self.worker_at[x, y, time_step_action]) for (x, y) in rest_playabel])))
         return And(all_f)
 
+    def init_pysmt_solver(self):
+        self.solver = Solver()
+        self.solver.add_assertion(self.formula)
+
     def solve_for_one(self):
         controls = None
+        if self.solver is None:
+            self.init_pysmt_solver()
         if self.solver.solve():
             controls = self.parse_solution()
             # print(f"Use {len(controls)} steps")
@@ -172,7 +175,7 @@ class SokobanSolverSAT(SokobanSolverBasic):
 
     def parse_solution(self):
         ### get a sequence of worker positions ###
-        worker = [self.worker_at.get_values(k) for k in self.worker_at.get_used_keys() if self.solver.get_value(k).is_true()]
+        worker = [self.worker_at.get_values(k) for k in self.worker_at.get_all_keys() if self.solver.get_value(k).is_true()]
         worker = sorted(worker, key=lambda t: t[1][2])
         controls = []
         pre_x, pre_y = self.init_worker_loc

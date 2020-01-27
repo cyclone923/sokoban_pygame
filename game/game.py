@@ -24,10 +24,10 @@ class SokobanGame:
         if solver is not None:
             assert step_limit is not None
             self.solver = solver(self.logic.matrix, step_limit=step_limit)
+            print(f"\nLevel: {self.level}")
             time0 = time.time()
             self.solution = self.solver.solve_for_one()
             time1 = time.time()
-            print(f"\nLevel: {self.level}")
             print(f"Use {time1 - time0: .2f} seconds")
             print(f"Use {len(self.solution)} steps")
 

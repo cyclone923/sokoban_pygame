@@ -17,16 +17,19 @@ if __name__ == "__main__":
     # game = SokobanGame(53, SokobanSolverSearch, 27) #0.0064s
     # game = SokobanGame(53, SokobanSolverSearchAdvanced, 27) #0.0037s
 
-    # game = SokobanGame(54, SokobanSolverSAT, 52) #7954s
+    # game = SokobanGame(54, SokobanSolverSAT, 52) #3.43
     # game = SokobanGame(54, SokobanSolverSearch, 52) #0.043s
     # game = SokobanGame(54, SokobanSolverSearchAdvanced, 52) #0.0433s
 
     # game = SokobanGame(1, SokobanSolverSearch, 112) # 7.7
     # game = SokobanGame(1, SokobanSolverSearchAdvanced, 112) # 13
 
-    # game.auto_play(70)
+    # game = SokobanGame(55, SokobanSolverSATSDP, 3) #13s
 
+    # game.auto_play(500)
 
-    for level in range(1,5):
+    for level in range(5,10):
         game = SokobanGame(level, SokobanSolverSearch, 200) # 7.7
-        game.auto_play(70)
+        print("solution ready")
+        input()
+        game.auto_play(100)

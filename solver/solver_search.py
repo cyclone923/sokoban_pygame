@@ -1,7 +1,10 @@
 from solver.solver_basic import SokobanSolverBasic
 from queue import Queue
 from heapdict import heapdict
-import time
+import numpy as np
+from scipy.optimize import linear_sum_assignment
+import satnet
+
 
 class GameState(object):
     def __init__(self, boxes, worker, parent):
@@ -135,7 +138,7 @@ class SokobanSolverSearch(SokobanSolverBasic):
 
     def search(self):
         frontier = heapdict()
-        frontier[self.init_game_info] = self.evaluate(self.init_game_info)
+        frontier[self.init_game_info] = self.bfs_evaluate(self.init_game_info)
         solution = None
         expanded = set()
         while frontier.peekitem() and solution is None:
@@ -145,13 +148,19 @@ class SokobanSolverSearch(SokobanSolverBasic):
             for s in successors:
                 if self.win(s):
                     solution = s.get_history()
+                    print(f"State Searched {len(expanded)+len(frontier)}")
                     break
                 else:
-                    if s not in expanded and s not in frontier:
-                        score = self.evaluate(s)
-                        if score != float('inf'):
-                            frontier[s] = score
+                    if s not in expanded and s not in frontier and not self.is_dead_state(s):
+                        score = self.cost_ot_evalueate_(s)
+                        frontier[s] = score
         return solution
+
+    def is_dead_state(self, state):
+        for box in state.boxes:
+            if self.at_dead_corner(box):
+                return True
+        return False
 
     def get_depth(self, state):
         d = 0
@@ -160,14 +169,33 @@ class SokobanSolverSearch(SokobanSolverBasic):
             d += 1
         return d
 
-    def evaluate(self, game_state):
-        # score = 1
+    def bfs_evaluate(self, game_state):# consistent heuristic
         score = self.get_depth(game_state)
-        for box in game_state.boxes:
-            if self.at_dead_corner(box):
-                score += float('inf')
-                break
         return score
+
+    def random_evaluate(self, game_state):# not consistent heuristic
+        return self.get_depth(game_state) + np.random.random()
+
+    def cost_ot_evalueate(self, game_state): # consistent heuristic, lower bound of moves need to be taken
+        n_box = len(self.docks)
+        cost = np.zeros(shape=(n_box, n_box))
+        for i, (x1, y1) in enumerate(self.docks):
+            for j, (x2, y2) in enumerate(game_state.boxes):
+                cost[i,j] = abs(x1-x2) + abs(y1-y2)
+        row_idx, col_idx = linear_sum_assignment(cost)
+        return self.get_depth(game_state) + cost[row_idx, col_idx].sum()
+
+    def ot_evalueate(self, game_state): # consistent heuristic, lower bound of moves need to be taken
+        n_box = len(self.docks)
+        cost = np.zeros(shape=(n_box, n_box))
+        for i, (x1, y1) in enumerate(self.docks):
+            for j, (x2, y2) in enumerate(game_state.boxes):
+                cost[i,j] = abs(x1-x2) + abs(y1-y2)
+        row_idx, col_idx = linear_sum_assignment(cost)
+        return cost[row_idx, col_idx].sum()
+
+
+
 
 
 
