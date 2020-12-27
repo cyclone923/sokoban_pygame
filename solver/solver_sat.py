@@ -1,6 +1,8 @@
 from pysmt.shortcuts import *
 from solver.solver_basic import SokobanSolverBasic
 
+
+
 class SymbolArray:
     def __init__(self, name, dim):
         self.name = name
@@ -90,8 +92,7 @@ class SokobanSolverSAT(SokobanSolverBasic):
         elif action is self.push:
             pre = And(self.worker_at[init_loc_x, init_loc_y, time_step],
                       self.box_at[init_loc_x + offset_x, init_loc_y + offset_y, time_step],
-                      Not(self.box_at[init_loc_x + 2*offset_x, init_loc_y + 2*offset_y, time_step]),
-                      FALSE() if (init_loc_x + 2*offset_x, init_loc_y + 2*offset_y) in self.walls else TRUE())
+                      Not(self.box_at[init_loc_x + 2*offset_x, init_loc_y + 2*offset_y, time_step]))
             add = And(self.worker_at[init_loc_x + offset_x, init_loc_y + offset_y, time_step+1],
                       self.box_at[init_loc_x + 2*offset_x, init_loc_y + 2*offset_y, time_step+1])
             dele = And(Not(self.worker_at[init_loc_x, init_loc_y, time_step+1]),
@@ -103,21 +104,31 @@ class SokobanSolverSAT(SokobanSolverBasic):
     def encode_action_schema(self):
         all_f = []
         for time_step_action in range(self.step_limit):
+            all_action = []
             for i,j in self.playabel:
                 reachable = self.get_one_step_move(i, j)
                 for tar_i, tar_j in reachable:
                     offset_x, offset_y = tar_i - i, tar_j - j
                     action = self.move[i, j, tar_i, tar_j, time_step_action]
+                    all_action.append(action)
                     pre, add, dele = self.get_action_schema(self.move, (i, j, offset_x, offset_y, time_step_action))
                     all_f.append(Implies(action, pre))
                     all_f.append(Implies(action, add))
                     all_f.append(Implies(action, dele))
 
-                    action = self.push[i, j, tar_i, tar_j, time_step_action]
-                    pre, add, dele = self.get_action_schema(self.push, (i, j, offset_x, offset_y, time_step_action))
-                    all_f.append(Implies(action, pre))
-                    all_f.append(Implies(action, add))
-                    all_f.append(Implies(action, dele))
+                    if (i + 2 * offset_x, j + 2 * offset_y) not in self.walls:
+                        action = self.push[i, j, tar_i, tar_j, time_step_action]
+                        all_action.append(action)
+                        pre, add, dele = self.get_action_schema(self.push, (i, j, offset_x, offset_y, time_step_action))
+                        all_f.append(Implies(action, pre))
+                        all_f.append(Implies(action, add))
+                        all_f.append(Implies(action, dele))
+
+            for a in all_action:
+                all_action_copy = all_action.copy()
+                all_action_copy.pop(all_action_copy.index(a))
+                for b in all_action_copy:
+                    all_f.append(Or(Not(a), Not(b)))
         return And(all_f)
 
     def encode_state_schema(self):
@@ -130,12 +141,15 @@ class SokobanSolverSAT(SokobanSolverBasic):
                 for tar_i, tar_j in reachable:
                     possible_out_move.append(self.move[i, j, tar_i, tar_j, time_step_action])
                     possible_in_move.append(self.move[tar_i, tar_j, i, j, time_step_action])
-                    possible_out_move.append(self.push[i, j, tar_i, tar_j, time_step_action])
-                    possible_in_move.append(self.push[tar_i, tar_j, i, j, time_step_action])
+                    offset_x, offset_y = tar_i - i, tar_j - j
+                    if (tar_i + offset_x, tar_j + offset_y) not in self.walls:
+                        possible_out_move.append(self.push[i, j, tar_i, tar_j, time_step_action])
+                    if (i - offset_x, j - offset_y) not in self.walls:
+                        possible_in_move.append(self.push[tar_i, tar_j, i, j, time_step_action])
                 all_f.append(Implies(And(Not(self.worker_at[i, j, time_step_action]), self.worker_at[i, j, time_step_action+1]),
-                                         ExactlyOne(possible_in_move)))
+                                         Or(possible_in_move)))
                 all_f.append(Implies(And(self.worker_at[i, j, time_step_action], Not(self.worker_at[i, j, time_step_action+1])),
-                                         ExactlyOne(possible_out_move)))
+                                         Or(possible_out_move)))
 
                 possible_out_push = []
                 possible_in_push = []
@@ -146,14 +160,11 @@ class SokobanSolverSAT(SokobanSolverBasic):
                     if (i - offset_x, j - offset_y) not in self.walls:
                         possible_out_push.append(self.push[i - offset_x, j - offset_y, i, j, time_step_action])
                 all_f.append(Implies(And(Not(self.box_at[i, j, time_step_action]), self.box_at[i, j, time_step_action+1]),
-                                         ExactlyOne(possible_in_push)))
+                                         Or(possible_in_push)))
                 all_f.append(Implies(And(self.box_at[i, j, time_step_action], Not(self.box_at[i, j, time_step_action+1])),
-                                         ExactlyOne(possible_out_push)))
-
-                rest_playabel = self.playabel.copy()
-                rest_playabel.remove((i,j))
-                all_f.append(Implies(self.worker_at[i, j, time_step_action], And([Not(self.worker_at[x, y, time_step_action]) for (x, y) in rest_playabel])))
+                                         Or(possible_out_push)))
         return And(all_f)
+
 
     def init_pysmt_solver(self):
         self.solver = Solver()
@@ -164,14 +175,17 @@ class SokobanSolverSAT(SokobanSolverBasic):
         if self.solver is None:
             self.init_pysmt_solver()
         if self.solver.solve():
-            controls = self.parse_solution()
+            self.controls = self.parse_solution()
             # print(f"Use {len(controls)} steps")
             # print(controls)
             # partial_model = [EqualsOrIff(k, self.solver.get_value(k)) for k in self.get_used_keys()]
             # self.solver.add_assertion(Not(And(partial_model)))
         else:
             print(f"No solution found in {self.step_limit} steps")
-        return controls
+
+
+    def get_controls(self):
+        return self.controls
 
     def parse_solution(self):
         ### get a sequence of worker positions ###

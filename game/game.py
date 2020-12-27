@@ -2,10 +2,16 @@ import pygame
 import sys
 from game.logic import SokobanLogic
 import time
-
+import os
+import numpy as np
+import torch
+from solver.search_util.policy import Action_Predictior
+from solver.search_util.value import Value_Predictior
+from solver.solver_search import SokobanSolverSearch
+from torch.utils.data import TensorDataset
 
 class SokobanGame:
-    def __init__(self, level, solver=None, step_limit=None):
+    def __init__(self, level, solver=None, step_limit=None, data_dir=None, train_levels=None):
         self.wall = pygame.image.load('images/wall.png')
         self.floor = pygame.image.load('images/floor.png')
         self.box = pygame.image.load('images/box.png')
@@ -20,23 +26,46 @@ class SokobanGame:
         self.level = level
         self.logic = SokobanLogic('levels', self.level)
         self.solver = None
-        self.solution = None
+        self.controls = None
+        self.data_dir = data_dir
+        self.action_pred = None
+        self.value_pred = None
+
         if solver is not None:
             assert step_limit is not None
             self.solver = solver(self.logic.matrix, step_limit=step_limit)
+
+            # if train_levels is not None:
+            #     assert type(self.solver) is SokobanSolverSearch
+            #     self.value_pred, self.action_pred, self.train_model(train_levels)
+
             print(f"\nLevel: {self.level}")
             time0 = time.time()
-            self.solution = self.solver.solve_for_one()
+            self.solver.solve_for_one()
+            self.controls = self.solver.get_controls()
             time1 = time.time()
             print(f"Use {time1 - time0: .2f} seconds")
-            print(f"Use {len(self.solution)} steps")
+            print(f"Use {len(self.controls)} steps")
 
+        if self.data_dir is not None and type(self.solver) is SokobanSolverSearch:
+            level_dir = os.path.join(self.data_dir, str(level))
+            os.makedirs(level_dir, exist_ok=True)
+            self.solver.get_data(level_dir)
 
-    def solve_game(self):
-        if self.solver is None:
-            raise ReferenceError("solver not provided")
-        else:
-            return self.solver.solve_for_one()
+    def train_model(self, train_levels):
+        all_points = []
+        all_features = []
+        all_actions = []
+        all_scores = []
+        for level in train_levels:
+            all_points.append(np.load(os.path.join(self.data_dir, str(level), "points.npy")))
+            all_features.append(np.load(os.path.join(self.data_dir, str(level), "features.npy")))
+            all_actions.append(np.load(os.path.join(self.data_dir, str(level), "actions.npy")))
+            all_scores.append(np.load(os.path.join(self.data_dir, str(level), "scores.npy")))
+        # self.value_pred = Value_Predictior()
+        # self.value_pred.fit(all_points, all_features, all_scores)
+        self.action_pred = Action_Predictior()
+        self.action_pred.fit(all_points, all_features, all_actions)
 
     def print_game(self, matrix, screen):
         screen.fill(self.background)
@@ -132,8 +161,8 @@ class SokobanGame:
         pygame.font.init()
         self.size = self.logic.load_size()
         self.screen = pygame.display.set_mode(self.size)
-        if self.solution is not None:
-            self.solution = self.solution[::-1]
+        if self.controls is not None:
+            self.controls = self.controls[::-1]
         time_elapsed_since_last_action = 0
         clock = pygame.time.Clock()
         while True:
@@ -147,8 +176,8 @@ class SokobanGame:
                     pygame.time.wait(500)
                     pygame.quit()
                     break
-                elif self.solution != []:
-                    control = self.solution.pop()
+                elif self.controls != []:
+                    control = self.controls.pop()
                     if control == "UP":
                         self.logic.move(0, -1, True)
                     elif control == "DOWN":

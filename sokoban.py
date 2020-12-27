@@ -1,35 +1,14 @@
 from game.game import SokobanGame
-from solver.solver_sat import SokobanSolverSAT
 from solver.solver_search import SokobanSolverSearch
-from solver.solver_search_advanced import SokobanSolverSearchAdvanced
-import time
+from solver.solver_sat import SokobanSolverSAT
+
 
 if __name__ == "__main__":
-    # game = SokobanGame(51, SokobanSolverSAT, 17) #13s
-    # game = SokobanGame(51, SokobanSolverSearch, 17) #0.42s
-    # game = SokobanGame(51, SokobanSolverSearchAdvanced, 17) #2.01s
+    data_dir = "experience"
 
-    # game = SokobanGame(52, SokobanSolverSAT, 14) #0.15s
-    # game = SokobanGame(52, SokobanSolverSearch, 14) #0.0016s
-    # game = SokobanGame(52, SokobanSolverSearchAdvanced, 14) #0.0011s
-
-    # game = SokobanGame(53, SokobanSolverSAT, 27) #2s
-    # game = SokobanGame(53, SokobanSolverSearch, 27) #0.0064s
-    # game = SokobanGame(53, SokobanSolverSearchAdvanced, 27) #0.0037s
-
-    # game = SokobanGame(54, SokobanSolverSAT, 52) #3.43
-    # game = SokobanGame(54, SokobanSolverSearch, 52) #0.043s
-    # game = SokobanGame(54, SokobanSolverSearchAdvanced, 52) #0.0433s
-
-    # game = SokobanGame(1, SokobanSolverSearch, 112) # 7.7
-    # game = SokobanGame(1, SokobanSolverSearchAdvanced, 112) # 13
-
-    # game = SokobanGame(55, SokobanSolverSATSDP, 3) #13s
-
-    # game.auto_play(500)
-
-    for level in range(5,10):
-        game = SokobanGame(level, SokobanSolverSearch, 200) # 7.7
-        print("solution ready")
-        input()
-        game.auto_play(100)
+    for level in range(103, 104):
+        game = SokobanGame(level, SokobanSolverSAT, 12) # 7.7
+        # print("solution ready")
+        # input()
+        game.auto_play(50)
+        # exit(0)

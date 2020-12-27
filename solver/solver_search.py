@@ -1,48 +1,26 @@
 from solver.solver_basic import SokobanSolverBasic
-from queue import Queue
 from heapdict import heapdict
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-import satnet
-
-
-class GameState(object):
-    def __init__(self, boxes, worker, parent):
-        self.boxes = boxes
-        self.worker = worker
-        self.parent = parent
-
-    def __eq__(self, other):
-        return self.boxes == other.boxes and self.worker == other.worker
-
-    def __hash__(self):
-        return hash( (self.worker, frozenset(self.boxes)))
-
-    def get_history(self):
-        history = []
-        current = self
-        while current is not None:
-            history.append((current.worker, current.boxes))
-            current = current.parent
-        history.reverse()
-        return history
+import os
+from solver.search_util.state import GameState
 
 
 class SokobanSolverSearch(SokobanSolverBasic):
-    def __init__(self, map, step_limit):
+    def __init__(self, map, step_limit, data_dir=None):
         super().__init__(map)
         self.init_game_info = GameState(self.init_boxes_loc, self.init_worker_loc, None)
-        self.goal_game_state = GameState(self.docks, None, None)
         self.step_limit = step_limit
+        self.solution_history = None
 
     def win(self, s):
-        return s.boxes == self.goal_game_state.boxes # set equivalence
+        return s.boxes == self.docks # set equivalence
 
     def push_box(self, worker, box, all_boxes):# return the new worker postion and new box posistion
         new_worker_and_box = None
-        offset_x, offset_y = box[0] - worker[0], box[1] - worker[1]
+        offset_x, offset_y = box.x - worker.x, box.y - worker.y
         assert (offset_x, offset_y) in self.control_mapping
-        push_tar = (box[0] + offset_x, box[1] + offset_y)
+        push_tar = self.Point(box.x + offset_x, box.y + offset_y)
         if push_tar not in self.walls and push_tar not in all_boxes:
             new_worker_and_box = (box, push_tar)
         return new_worker_and_box
@@ -51,66 +29,81 @@ class SokobanSolverSearch(SokobanSolverBasic):
         ans = False
         if box not in self.docks:
             x, y = box
-            if (x+1, y) in self.walls or (x-1, y) in self.walls:
-                if (x, y+1) in self.walls or (x, y-1) in self.walls:
+            if self.Point(x+1, y) in self.walls or self.Point(x-1, y) in self.walls:
+                if self.Point(x, y+1) in self.walls or self.Point(x, y-1) in self.walls:
                     ans = True
         return ans
 
-    def bfs_for_path(self, init_worker, tar_worker, boxes):
-        my_queue = Queue()
-        my_queue.put((init_worker, None))
-        solution = None
-        memory = set()
-        memory.add(init_worker)
-        while not my_queue.empty() and solution is None:
-            current = my_queue.get()
-            worker, _ = current
-            one_step_tars = self.get_one_step_move(worker[0], worker[1])
-            one_step_tars = set(filter(lambda x: x not in boxes and x not in memory, one_step_tars))
-            for new_worker in one_step_tars:
-                if new_worker == tar_worker:
-                    solution = (tar_worker, current)
-                    break
-                else:
-                    if new_worker not in memory:
-                        my_queue.put((new_worker, current))
-                        memory.add(new_worker)
-        seq_moves = []
-        while solution is not None:
-            seq_moves.append(solution[0])
-            solution = solution[1]
-        return list(reversed(seq_moves))
-
-    def get_seq_controls(self, history):
+    def get_seq_controls(self):
         controls = []
-        pre_worker, pre_boxes = history[0][0], history[0][1]
+        pre_worker = self.solution_history[0]
         assert pre_worker == self.init_worker_loc
-        assert pre_boxes == self.init_boxes_loc
-        for worker, boxes in history[1:]:
-            offset_x, offset_y = worker[0] - pre_worker[0], worker[1] - pre_worker[1]
-            if (offset_x, offset_y) in self.control_mapping:
-                controls.append(self.control_mapping[(offset_x, offset_y)])
-            else:
-                moves = self.bfs_for_path(pre_worker, worker, pre_boxes)
-                pre_x, pre_y = moves[0]
-                for x, y in moves[1:]:
-                    offset_x, offset_y = x - pre_x, y - pre_y
-                    controls.append(self.control_mapping[(offset_x, offset_y)])
-                    pre_x = x
-                    pre_y = y
+        for worker in self.solution_history[1:]:
+            offset_x, offset_y = worker.x - pre_worker.x, worker.y - pre_worker.y
+            assert (offset_x, offset_y) in self.control_mapping
+            controls.append(self.control_mapping[(offset_x, offset_y)])
             pre_worker = worker
-            pre_boxes = boxes
         return controls
 
+    def get_data(self, data_dir):
+        assert self.solution_history is not None
+        time_length = len(self.solution_history)
+        n_walls = len(self.walls)
+        n_docks = len(self.docks)
+        n_boxes = len(self.init_boxes_loc)
+        n_woker = 1
+        n_point = n_walls + n_docks + n_boxes + n_woker
+        n_feature = 4 # wall, box, docks, worker
+        n_action = 4
+
+        actions = np.zeros(shape=(time_length-1, n_action))
+        scores = np.zeros(shape=(time_length))
+        features = np.zeros(shape=(time_length, n_point, n_feature))
+        point_cloud = np.zeros(shape=(time_length, n_point, 2))
+
+        all_action = list(self.control_mapping.values())
+
+        cur_boxes = self.init_boxes_loc
+        cur_worker = self.init_worker_loc
+
+        for t in range(0, len(self.solution_history)):
+            n = 0
+            for f, one_set in enumerate([self.walls, self.docks, cur_boxes]):
+                for x, y in one_set:
+                    features[t, n, f] = 1
+                    point_cloud[t, n, 0],  point_cloud[t, n, 1] = x, y
+                    n += 1
+            point_cloud[t, n, 0], point_cloud[t, n, 1] = cur_worker.x, cur_worker.y
+            features[t, n, 3] = 1
+            scores[t] = len(self.solution_history) - (t+1)
+
+            if t < len(self.solution_history)-1:
+                worker = self.solution_history[t]
+                next_worker = self.solution_history[t+1]
+                offset_x, offset_y = next_worker.x - worker.x, next_worker.y - worker.y
+                a = all_action.index(self.control_mapping[(offset_x, offset_y)])
+                actions[t, a] = 1
+
+                if next_worker in cur_boxes: # only update box position when push happens
+                    new_worker, new_box = self.push_box(cur_worker, next_worker, cur_boxes)
+                    new_boxes = set(cur_boxes)
+                    new_boxes.remove(new_worker)
+                    new_boxes.add(new_box)
+                    cur_boxes = new_boxes
+                cur_worker = next_worker
+        np.save(os.path.join(data_dir, "points.npy"), point_cloud)
+        np.save(os.path.join(data_dir, "features.npy"), features)
+        np.save(os.path.join(data_dir, "scores.npy"), scores)
+        np.save(os.path.join(data_dir, "actions.npy"), actions)
+
+
     def solve_for_one(self):
-        history = self.search()
-        control = None
-        if history is not None:
-            control = self.get_seq_controls(history)
-            # print(control)
-        else:
-            print(f"No solution found in {self.step_limit} steps")
-        return control
+        assert self.solution_history is None
+        self.solution_history = self.search()
+
+    def get_controls(self):
+        assert self.solution_history is not None
+        return self.get_seq_controls()
 
     def creat_game_info(self, boxes, worker, parent):
         return GameState(boxes, worker, parent)
@@ -126,7 +119,7 @@ class SokobanSolverSearch(SokobanSolverBasic):
                 child = self.creat_game_info(new_boxes, pos, current)
                 successors.append(child)
             else:
-                new_worker_and_box = self.push_box((x,y), pos, current.boxes)
+                new_worker_and_box = self.push_box(current.worker, pos, current.boxes)
                 if new_worker_and_box is not None:
                     new_worker, new_box = new_worker_and_box
                     new_boxes = set(current.boxes)
@@ -152,7 +145,7 @@ class SokobanSolverSearch(SokobanSolverBasic):
                     break
                 else:
                     if s not in expanded and s not in frontier and not self.is_dead_state(s):
-                        score = self.cost_ot_evalueate_(s)
+                        score = self.bfs_evaluate(s)
                         frontier[s] = score
         return solution
 
@@ -176,7 +169,7 @@ class SokobanSolverSearch(SokobanSolverBasic):
     def random_evaluate(self, game_state):# not consistent heuristic
         return self.get_depth(game_state) + np.random.random()
 
-    def cost_ot_evalueate(self, game_state): # consistent heuristic, lower bound of moves need to be taken
+    def cost_ot_evaluate(self, game_state): # consistent heuristic, lower bound of moves need to be taken
         n_box = len(self.docks)
         cost = np.zeros(shape=(n_box, n_box))
         for i, (x1, y1) in enumerate(self.docks):
@@ -185,7 +178,7 @@ class SokobanSolverSearch(SokobanSolverBasic):
         row_idx, col_idx = linear_sum_assignment(cost)
         return self.get_depth(game_state) + cost[row_idx, col_idx].sum()
 
-    def ot_evalueate(self, game_state): # consistent heuristic, lower bound of moves need to be taken
+    def ot_evaluate(self, game_state): # consistent heuristic, lower bound of moves need to be taken
         n_box = len(self.docks)
         cost = np.zeros(shape=(n_box, n_box))
         for i, (x1, y1) in enumerate(self.docks):
